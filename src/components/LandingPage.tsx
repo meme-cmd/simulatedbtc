@@ -33,7 +33,8 @@ export default function LandingPage() {
           {/* Logo/Title */}
           <div className="flex items-center space-x-4">
             <div className="text-white font-bold text-xl flex items-center">
-              Bitcoin Mining Simulator
+              <img src="/simbtclogo.png" alt="SimBTC Logo" className="w-8 h-8 mr-2" />
+              SimBTC - Bitcoin Mining Simulator
             </div>
             <Link 
               href="/blocks" 

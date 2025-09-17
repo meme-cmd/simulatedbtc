@@ -103,7 +103,10 @@ export default function LiveBlocksPage() {
             >
               ← Back to Dashboard
             </Link>
-            <div className="text-white font-bold text-xl">Live Blocks</div>
+            <div className="text-white font-bold text-xl flex items-center">
+              <img src="/simbtclogo.png" alt="SimBTC Logo" className="w-6 h-6 mr-2" />
+              SimBTC - Live Blocks
+            </div>
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`} />
             <span className="text-xs text-blue-200">
               {isConnected ? 'Live' : 'Disconnected'}

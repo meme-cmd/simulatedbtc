@@ -69,13 +69,18 @@ export default function LoadingScreen({ onComplete, redirectTo = '/mining' }: Lo
           {/* Main Loading Window */}
           <div className="window mb-5" style={{ width: '400px' }}>
             <div className="title-bar">
-              <div className="title-bar-text">🕰️ Time Machine - Loading...</div>
+              <div className="title-bar-text">🕰️ SimBTC Time Machine - Loading...</div>
               <div className="title-bar-controls">
                 <button aria-label="Minimize" disabled />
                 <button aria-label="Close" disabled />
               </div>
             </div>
             <div className="window-body">
+              <div className="flex items-center justify-center my-4">
+                <img src="/simbtclogo.png" alt="SimBTC Logo" className="w-12 h-12 mr-3" />
+                <div className="text-xl font-bold text-black">SimBTC</div>
+              </div>
+              
               <div className="text-lg font-bold text-black my-5">
                 Taking you back to
               </div>
