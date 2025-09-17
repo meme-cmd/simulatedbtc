@@ -40,11 +40,9 @@ services:
       #   sync: false
 
   # Frontend Static Site
-  - type: static
+  - type: web
     name: bitcoin-mining-frontend
-    runtime: node
-    plan: starter
-    region: oregon
+    runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./out
     pullRequestPreviewsEnabled: true
