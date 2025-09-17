@@ -1,0 +1,25 @@
+# Server Configuration
+PORT=3001
+
+# Solana Configuration
+SOLANA_CLUSTER=mainnet-beta
+RPC_URL=https://mainnet.helius-rpc.com
+HELIUS_API_KEY=357426ea-a7d4-4e26-9c9a-adf3844fccee
+BTC_SPL_MINT=3zY6EXputsabfL3kQeXNycoejbaNU7AkLokrmy53pump
+BURN_ADDRESS=11111111111111111111111111111112
+
+# Custody Wallets (base64 encoded private keys)
+# Generate new ones for production!
+CUSTODY_SOL=
+CUSTODY_BTC_SPL=
+
+# Security
+JWT_SECRET=your-jwt-secret-change-in-production
+WEBHOOK_SECRET=your-webhook-secret-change-in-production
+
+# Mining Simulation
+TARGET_BLOCK_INTERVAL=10
+HALVING_COUNT=4
+SEASON_LENGTH=7
+INITIAL_REWARD=50
+MAX_BLOCKS_IN_MEMORY=500

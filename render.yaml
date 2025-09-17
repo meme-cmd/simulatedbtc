@@ -1,0 +1,71 @@
+services:
+  # Backend API Service
+  - type: web
+    name: bitcoin-mining-backend
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: TARGET_BLOCK_INTERVAL
+        value: 10
+      - key: HALVING_COUNT
+        value: 4
+      - key: SEASON_LENGTH
+        value: 7
+      - key: DIFFICULTY_RETARGET_BLOCKS
+        value: 2016
+      - key: MAX_DIFFICULTY_ADJUSTMENT
+        value: 4
+      - key: INITIAL_DIFFICULTY
+        value: 1000000
+      - key: INITIAL_REWARD
+        value: 50
+      - key: MAX_BLOCKS_IN_MEMORY
+        value: 500
+      # Add your Solana/Helius API keys here as environment variables
+      - key: TREASURY_WALLET_ADDRESS
+        value: BDdRt5y7nS6iMfgHqNwU6zqVMWZ9KBuDDt17YCYkDMiN
+      - key: SPL_MINT_ADDRESS
+        value: YOUR_SPL_MINT_ADDRESS_HERE
+      # - key: HELIUS_API_KEY
+      #   sync: false
+      # - key: SOLANA_PRIVATE_KEY
+      #   sync: false
+
+  # Frontend Static Site
+  - type: static
+    name: bitcoin-mining-frontend
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./out
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://bitcoin-mining-backend.onrender.com/api/*
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://bitcoin-mining-backend.onrender.com
+      - key: NEXT_PUBLIC_WS_URL
+        value: wss://bitcoin-mining-backend.onrender.com
