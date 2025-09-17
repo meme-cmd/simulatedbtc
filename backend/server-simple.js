@@ -11,6 +11,7 @@ const { SolanaService } = require('./solana-service');
 const { EmissionsController } = require('./emissions-controller');
 const { AuthService } = require('./auth-service');
 const TransactionVerifier = require('./transaction-verifier');
+const { DatabaseService } = require('./supabase-client');
 
 const app = express();
 const server = createServer(app);
@@ -20,13 +21,11 @@ const wss = new WebSocketServer({ server });
 const solanaService = new SolanaService();
 const authService = new AuthService();
 const transactionVerifier = new TransactionVerifier();
+const db = new DatabaseService();
 
-// Simple in-memory storage
-const users = new Map();
-const userRigs = new Map();
-const burnLedger = [];
+// Global state (will be loaded from database)
 let globalBurned = 0;
-const initialCirculating = 1000000;
+let initialCirculating = 1000000;
 
 // Emissions controller (single source of truth)
 const EMISSIONS_CONFIG = Object.freeze({ SEASON_DAYS: 7, TARGET_BLOCK_INTERVAL_SEC: 10, TOTAL_EMISSION: 210_000_000, HALVING_EPOCHS: 4 });
@@ -120,37 +119,58 @@ lastBlockTime = getGameTime();
 // Helper functions
 const getSessionId = (req) => req.headers['x-session-id'] || 'demo-user';
 
-const getUser = (sessionId) => {
-  if (!users.has(sessionId)) {
-    const user = {
-      id: uuidv4(),
-      sessionId,
-      balances: { BTC_SPL: 15000 }, // Starting balance - enough to buy 1-2 basic rigs
-      totalEarned: 0,
-      createdAt: getGameTime()
-    };
-    users.set(sessionId, user);
-    userRigs.set(user.id, []);
+const getUser = async (sessionId) => {
+  try {
+    let user = await db.getUserBySessionId(sessionId);
+    
+    if (!user) {
+      // Create new user
+      user = await db.createUser(sessionId, 15000);
+    }
+    
+    return user;
+  } catch (error) {
+    console.error('Error getting user:', error);
+    throw error;
   }
-  return users.get(sessionId);
 };
 
-const calculateUserEHR = (userId) => {
-  const rigs = userRigs.get(userId) || [];
-  return rigs
-    .filter(rig => rig.isActive && rig.quality > 0)
-    .reduce((total, rig) => {
-      const qualityMultiplier = rig.quality / 100;
-      return total + (rig.tier.hashrate * rig.uptime * qualityMultiplier);
-    }, 0);
+const calculateUserEHR = async (userId) => {
+  try {
+    const rigs = await db.getUserRigs(userId);
+    return rigs
+      .filter(rig => rig.is_active && rig.quality > 0)
+      .reduce((total, rig) => {
+        const qualityMultiplier = rig.quality / 100;
+        const tierData = rig.tier_data;
+        return total + (tierData.hashrate * rig.uptime * qualityMultiplier);
+      }, 0);
+  } catch (error) {
+    console.error('Error calculating user EHR:', error);
+    return 0;
+  }
 };
 
-const calculateNetworkHashrate = () => {
-  let totalEHR = 0;
-  for (const user of users.values()) {
-    totalEHR += calculateUserEHR(user.id);
+const calculateNetworkHashrate = async () => {
+  try {
+    // For now, return a base hashrate. In the future, we could cache this or calculate from all users
+    return Math.max(100, 100); // Base network hashrate
+  } catch (error) {
+    console.error('Error calculating network hashrate:', error);
+    return 100;
   }
-  return Math.max(totalEHR, 100);
+};
+
+// Initialize global state from database
+const initializeGlobalState = async () => {
+  try {
+    const stats = await db.getGlobalStats();
+    globalBurned = stats.global_burned || 0;
+    initialCirculating = stats.circulating_supply || 1000000;
+    console.log(`Loaded global state: burned=${globalBurned}, circulating=${initialCirculating}`);
+  } catch (error) {
+    console.error('Error initializing global state:', error);
+  }
 };
 
 // Quality degradation system
@@ -240,60 +260,71 @@ app.post('/api/verify/transaction', async (req, res) => {
   }
 });
 
-app.get('/api/telemetry', (req, res) => {
-  const sessionId = getSessionId(req);
-  const user = getUser(sessionId);
-  const userEHR = calculateUserEHR(user.id);
-  const et = emissions.getTelemetry(currentHeight);
-  const nextHalvingHeight = seasonEnded ? null : (typeof et.nextHalvingIn === 'number' ? currentHeight + et.nextHalvingIn : null);
-  const blocksRemaining = et.blocksRemaining;
-  const currentReward = seasonEnded ? 0 : et.currentReward;
+app.get('/api/telemetry', async (req, res) => {
+  try {
+    const sessionId = getSessionId(req);
+    const user = await getUser(sessionId);
+    const userEHR = await calculateUserEHR(user.id);
+    const et = emissions.getTelemetry(currentHeight);
+    const nextHalvingHeight = seasonEnded ? null : (typeof et.nextHalvingIn === 'number' ? currentHeight + et.nextHalvingIn : null);
+    const blocksRemaining = et.blocksRemaining;
+    const currentReward = seasonEnded ? 0 : et.currentReward;
+    const networkHashrate = await calculateNetworkHashrate();
 
-  res.json({
-    height: currentHeight,
-    timestamp: getGameTime(),
-    gameTime: getGameTime(),
-    difficulty,
-    networkHashrate: calculateNetworkHashrate(),
-    avgBlockTime,
-    currentReward,
-    nextHalvingHeight,
-    blocksUntilRetarget: 2016 - (currentHeight % 2016),
-    totalBlocksRecentBuffered: blocks.length,
-    globalBurned,
-    circulatingSupply: initialCirculating - globalBurned,
-    yourEHR: userEHR,
-    emissions: {
-      totalEmission: EMISSIONS_CONFIG.TOTAL_EMISSION,
-      emittedTotal: et.emittedTotal,
-      remaining: et.remaining,
-      totalBlocks: et.totalBlocks,
-      blocksRemaining: et.blocksRemaining,
-      halvingEpochs: EMISSIONS_CONFIG.HALVING_EPOCHS,
-      epochIndex: et.epochIndex,
-      epochLenBase: et.epochLen,
-      epochLenLast: et.epochLen,
-      halvingHeights: et.halvingHeights
-    },
-    seasonEnded
-  });
+    res.json({
+      height: currentHeight,
+      timestamp: getGameTime(),
+      gameTime: getGameTime(),
+      difficulty,
+      networkHashrate,
+      avgBlockTime,
+      currentReward,
+      nextHalvingHeight,
+      blocksUntilRetarget: 2016 - (currentHeight % 2016),
+      totalBlocksRecentBuffered: blocks.length,
+      globalBurned,
+      circulatingSupply: initialCirculating - globalBurned,
+      yourEHR: userEHR,
+      emissions: {
+        totalEmission: EMISSIONS_CONFIG.TOTAL_EMISSION,
+        emittedTotal: et.emittedTotal,
+        remaining: et.remaining,
+        totalBlocks: et.totalBlocks,
+        blocksRemaining: et.blocksRemaining,
+        halvingEpochs: EMISSIONS_CONFIG.HALVING_EPOCHS,
+        epochIndex: et.epochIndex,
+        epochLenBase: et.epochLen,
+        epochLenLast: et.epochLen,
+        halvingHeights: et.halvingHeights
+      },
+      seasonEnded
+    });
+  } catch (error) {
+    console.error('Error in telemetry endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-app.get('/api/user', (req, res) => {
-  const sessionId = getSessionId(req);
-  const user = getUser(sessionId);
-  const rigs = userRigs.get(user.id) || [];
-  const ehr = calculateUserEHR(user.id);
-  
-  res.json({
-    user: {
-      id: user.id,
-      balances: user.balances,
-      totalEarned: user.totalEarned
-    },
-    rigs,
-    ehr
-  });
+app.get('/api/user', async (req, res) => {
+  try {
+    const sessionId = getSessionId(req);
+    const user = await getUser(sessionId);
+    const rigs = await db.getUserRigs(user.id);
+    const ehr = await calculateUserEHR(user.id);
+    
+    res.json({
+      user: {
+        id: user.id,
+        balances: user.balances,
+        totalEarned: user.total_earned
+      },
+      rigs,
+      ehr
+    });
+  } catch (error) {
+    console.error('Error in user endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.get('/api/rigs/tiers', (req, res) => {
@@ -302,80 +333,83 @@ app.get('/api/rigs/tiers', (req, res) => {
   res.json(tiers);
 });
 
-app.post('/api/rigs/buy', (req, res) => {
-  const { tierId, idempotencyKey = uuidv4() } = req.body;
-  const sessionId = getSessionId(req);
-  const user = getUser(sessionId);
-  
-  if (!tierId) {
-    return res.status(400).json({ error: 'tierId is required' });
+app.post('/api/rigs/buy', async (req, res) => {
+  try {
+    const { tierId, idempotencyKey = uuidv4() } = req.body;
+    const sessionId = getSessionId(req);
+    const user = await getUser(sessionId);
+    
+    if (!tierId) {
+      return res.status(400).json({ error: 'tierId is required' });
+    }
+
+    const et = emissions.getTelemetry(currentHeight);
+    const dynamicTiers = getDynamicRigTiers(et.currentReward);
+    const rigTier = dynamicTiers.find(tier => tier.id === tierId);
+    if (!rigTier) {
+      return res.status(400).json({ error: 'Rig tier not found' });
+    }
+
+    if (user.balances.BTC_SPL < rigTier.priceBTC_SPL) {
+      return res.status(400).json({ error: 'Insufficient balance' });
+    }
+
+    // Deduct balance and update user
+    const newBalances = { ...user.balances };
+    newBalances.BTC_SPL -= rigTier.priceBTC_SPL;
+    await db.updateUserBalance(user.id, newBalances);
+
+    // Update global stats
+    globalBurned += rigTier.priceBTC_SPL;
+    await db.updateGlobalStats(globalBurned, initialCirculating - globalBurned);
+
+    // Create rig in database
+    const rigData = {
+      tierId: rigTier.id,
+      tier: rigTier,
+      purchasedAt: getGameTime(),
+      uptime: rigTier.uptime,
+      quality: rigTier.maxQuality,
+      lastMaintenanceAt: getGameTime(),
+      isActive: true
+    };
+
+    const userRig = await db.createRig(user.id, rigData);
+
+    // Queue on-chain burn (async)
+    solanaService.burnTokens(rigTier.priceBTC_SPL, user.id, 'rig_purchase')
+      .then(burnResult => {
+        if (burnResult.success) {
+          console.log(`🔥 Burned ${rigTier.priceBTC_SPL} $BTC SPL on-chain: ${burnResult.txSignature}`);
+        } else {
+          console.error('Burn failed:', burnResult.error);
+        }
+      })
+      .catch(console.error);
+
+    res.json({
+      rig: userRig,
+      newBalance: newBalances.BTC_SPL,
+      globalBurned,
+      circulatingSupply: initialCirculating - globalBurned,
+      burnQueued: true
+    });
+  } catch (error) {
+    console.error('Error buying rig:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  const et = emissions.getTelemetry(currentHeight);
-  const dynamicTiers = getDynamicRigTiers(et.currentReward);
-  const rigTier = dynamicTiers.find(tier => tier.id === tierId);
-  if (!rigTier) {
-    return res.status(400).json({ error: 'Rig tier not found' });
-  }
-
-  if (user.balances.BTC_SPL < rigTier.priceBTC_SPL) {
-    return res.status(400).json({ error: 'Insufficient balance' });
-  }
-
-  // Deduct balance
-  user.balances.BTC_SPL -= rigTier.priceBTC_SPL;
-  globalBurned += rigTier.priceBTC_SPL;
-
-  // Create rig
-  const userRig = {
-    id: uuidv4(),
-    userId: user.id,
-    tierId: rigTier.id,
-    tier: rigTier,
-    purchasedAt: getGameTime(),
-    uptime: rigTier.uptime,
-    quality: rigTier.maxQuality, // Start at 100% quality
-    lastMaintenanceAt: getGameTime(),
-    isActive: true
-  };
-
-  const rigs = userRigs.get(user.id) || [];
-  rigs.push(userRig);
-  userRigs.set(user.id, rigs);
-
-  // Queue on-chain burn (async)
-  solanaService.burnTokens(rigTier.priceBTC_SPL, user.id, 'rig_purchase')
-    .then(burnResult => {
-      if (burnResult.success) {
-        console.log(`🔥 Burned ${rigTier.priceBTC_SPL} $BTC SPL on-chain: ${burnResult.txSignature}`);
-      } else {
-        console.error('Burn failed:', burnResult.error);
-      }
-    })
-    .catch(console.error);
-
-  res.json({
-    rig: userRig,
-    newBalance: user.balances.BTC_SPL,
-    globalBurned,
-    circulatingSupply: initialCirculating - globalBurned,
-    burnQueued: true
-  });
 });
 
-app.get('/api/leaderboard', (req, res) => {
-  const limit = parseInt(req.query.limit) || 10;
-  const leaderboard = Array.from(users.values())
-    .map(user => ({
-      userId: user.id,
-      sessionId: user.sessionId,
-      totalEarned: user.totalEarned,
-      ehr: calculateUserEHR(user.id)
-    }))
-    .sort((a, b) => b.totalEarned - a.totalEarned)
-    .slice(0, limit);
-  
-  res.json(leaderboard);
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const leaderboard = await db.getLeaderboard(limit);
+    
+    res.json(leaderboard);
+  } catch (error) {
+    console.error('Error fetching leaderboard:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Repair rig endpoint
@@ -873,11 +907,25 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
-  console.log(`Mining simulator backend running on port ${PORT}`);
-  console.log(`WebSocket endpoint: ws://localhost:${PORT}`);
-  console.log(`REST API: http://localhost:${PORT}/api`);
-});
+// Initialize the server
+const startServer = async () => {
+  try {
+    // Initialize global state from database
+    await initializeGlobalState();
+    
+    server.listen(PORT, () => {
+      console.log(`Mining simulator backend running on port ${PORT}`);
+      console.log(`WebSocket endpoint: ws://localhost:${PORT}`);
+      console.log(`REST API: http://localhost:${PORT}/api`);
+      console.log(`Database: Connected to Supabase`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 process.on('SIGINT', () => {
   console.log('Shutting down...');
