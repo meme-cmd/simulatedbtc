@@ -29,6 +29,11 @@ services:
         value: 50
       - key: MAX_BLOCKS_IN_MEMORY
         value: 500
+      # Supabase Database Configuration
+      - key: SUPABASE_URL
+        value: https://jomkiwprfelfcgcwjjec.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvbWtpd3ByZmVsZmNnY3dqamVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMTEwMTcsImV4cCI6MjA3MzY4NzAxN30.gh4V_xvdyv0HJfcTg7S5ClRifXarqqxfKF73wvw4BmE
       # Add your Solana/Helius API keys here as environment variables
       - key: TREASURY_WALLET_ADDRESS
         value: BDdRt5y7nS6iMfgHqNwU6zqVMWZ9KBuDDt17YCYkDMiN

@@ -5,7 +5,7 @@
 Your Bitcoin Mining Simulator has been configured with:
 
 ### Custody Wallet Information:
-- **Private Key**: `44dr9hD6DCUG2Ru9N943xmkLU1uwDwXwGfWwt4A9gPJJ17HyTDb1WGhkshuCWDSEEBN7b3jzjQjYiEUZ8SVQrTQi`
+- **Private Key**: `[REMOVED FOR SECURITY - ADD MANUALLY TO RENDER]`
 - **Public Key**: `BDdRt5y7nS6iMfgHqNwU6zqVMWZ9KBuDDt17YCYkDMiN`
 - **SPL Mint Address**: `YOUR_SPL_MINT_ADDRESS_HERE` (placeholder)
 
@@ -60,7 +60,7 @@ git push -u origin main
 
 2. **Set Environment Variables in Render**:
    - `HELIUS_API_KEY`: Your Helius API key
-   - `SOLANA_PRIVATE_KEY`: `44dr9hD6DCUG2Ru9N943xmkLU1uwDwXwGfWwt4A9gPJJ17HyTDb1WGhkshuCWDSEEBN7b3jzjQjYiEUZ8SVQrTQi`
+   - `SOLANA_PRIVATE_KEY`: `[REMOVED FOR SECURITY - ADD MANUALLY TO RENDER]`
    - `SPL_MINT_ADDRESS`: Your actual SPL token mint address
 
 3. **Update SPL Mint Address**:
